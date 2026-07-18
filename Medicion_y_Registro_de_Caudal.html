@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171A">
+<title>Medición y Registro de Caudal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171A;
+    --panel:#1E2226;
+    --panel-2:#22272C;
+    --border:#2B3136;
+    --text:#E8ECEF;
+    --muted:#8A939C;
+    --accent:#34D3C9;      /* readout cyan - aire/flujo */
+    --accent-dim:#1E4E4A;
+    --input-bg:#2A2410;    /* celda "amarilla" oscura = campo editable, guiño al Excel */
+    --input-border:#5C4A12;
+    --input-glow:#F2C94C;
+    --danger:#E5484D;
+    --danger-dim:#3A1B1C;
+    --ok:#3DDC97;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #1B2024 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    padding-bottom:40px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 8px;}
+
+  /* Header */
+  header{display:flex;align-items:center;gap:12px;padding:6px 2px 18px;}
+  .grille-icon{width:38px;height:38px;flex:none;}
+  header h1{font-size:17px;font-weight:800;letter-spacing:.3px;margin:0;line-height:1.15;}
+  header p{margin:2px 0 0;color:var(--muted);font-size:12px;letter-spacing:.4px;text-transform:uppercase;}
+
+  /* Segmented tabs */
+  .tabs{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:18px;}
+  .tab{flex:1;text-align:center;padding:10px 0;font-size:13px;font-weight:700;border-radius:9px;color:var(--muted);cursor:pointer;user-select:none;transition:.15s;}
+  .tab.active{background:var(--accent-dim);color:var(--accent);}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;}
+  .panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 12px;font-weight:700;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+
+  input[type=text], input[type=number], input[type=date]{
+    width:100%;
+    background:var(--input-bg);
+    border:1px solid var(--input-border);
+    color:var(--text);
+    border-radius:9px;
+    padding:11px 12px;
+    font-size:15px;
+    font-family:'Inter',sans-serif;
+    outline:none;
+    transition:.15s;
+  }
+  input::placeholder{color:#5c6570;}
+  input:focus{border-color:var(--input-glow);box-shadow:0 0 0 3px rgba(242,201,76,0.15);}
+  input[readonly]{opacity:.55;}
+
+  .unit-input{position:relative;}
+  .unit-input span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;pointer-events:none;}
+  .unit-input input{padding-right:44px;}
+
+  /* Digital readout */
+  .readout{
+    background:linear-gradient(180deg,#0F1315,#0B0E10);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px 18px;
+    text-align:center;
+    margin-bottom:14px;
+    position:relative;
+    overflow:hidden;
+  }
+  .readout::before{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0px,rgba(255,255,255,.015) 1px,transparent 1px,transparent 3px);
+    pointer-events:none;
+  }
+  .readout .label{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .readout .value{
+    font-family:'JetBrains Mono',monospace;
+    font-size:44px;font-weight:700;
+    color:var(--accent);
+    text-shadow:0 0 18px rgba(52,211,201,.45);
+    line-height:1;
+  }
+  .readout .value span{font-size:16px;color:var(--muted);text-shadow:none;margin-left:6px;font-weight:500;}
+
+  .caudales-mini{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:14px;}
+  .mini{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;}
+  .mini .n{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+  .mini .v{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:3px;}
+
+  /* Buttons */
+  .btn{
+    width:100%;
+    border:none;border-radius:11px;
+    padding:14px 16px;
+    font-size:14.5px;font-weight:700;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:.15s;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:var(--accent);color:#08201D;}
+  .btn-secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--border);}
+  .btn-row{display:grid;grid-template-columns:1.4fr 1fr;gap:10px;margin-top:4px;}
+
+  /* Registro list */
+  .empty-state{text-align:center;padding:40px 20px;color:var(--muted);}
+  .empty-state svg{width:44px;height:44px;margin-bottom:10px;opacity:.5;}
+  .empty-state p{font-size:13px;margin:0;}
+
+  .record{
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:14px;margin-bottom:10px;
+  }
+  .record-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+  .record-badge{
+    background:var(--accent-dim);color:var(--accent);
+    font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+    padding:3px 8px;border-radius:6px;
+  }
+  .record-date{font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+  .record-title{font-size:14.5px;font-weight:700;margin:0 0 2px;}
+  .record-desc{font-size:12.5px;color:var(--muted);margin:0 0 10px;}
+  .record-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;}
+  .record-grid .cell{background:var(--panel-2);border-radius:7px;padding:6px 8px;}
+  .record-grid .cell .k{font-size:9px;color:var(--muted);text-transform:uppercase;}
+  .record-grid .cell .val{font-family:'JetBrains Mono',monospace;font-size:12.5px;}
+  .record-avg{
+    display:flex;justify-content:space-between;align-items:center;
+    background:rgba(52,211,201,.08);border:1px solid var(--accent-dim);
+    border-radius:8px;padding:8px 10px;margin-bottom:10px;
+  }
+  .record-avg .k{font-size:11px;color:var(--muted);}
+  .record-avg .val{font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700;font-size:15px;}
+  .record-actions{display:flex;gap:8px;}
+  .btn-mini{
+    flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);
+    background:var(--panel-2);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .btn-mini.danger{color:var(--danger);border-color:var(--danger-dim);}
+
+  .edit-usuario-btn{
+    background:none;border:none;color:var(--accent);font-size:11px;font-weight:600;
+    cursor:pointer;padding:0;margin-left:6px;text-decoration:underline;
+  }
+  input.locked-field{opacity:.65;background:var(--panel-2);border-color:var(--border);}
+
+  /* Pendientes de sincronizar */
+  .pendientes-header{
+    display:flex;justify-content:space-between;align-items:center;
+    background:rgba(242,201,76,.1);border:1px solid var(--input-border);
+    border-radius:10px;padding:10px 12px;margin-bottom:10px;
+    font-size:12.5px;color:var(--input-glow);font-weight:600;
+  }
+  .record.pending{border-color:var(--input-border);background:rgba(242,201,76,.04);}
+  .pending-badge{background:rgba(242,201,76,.15);color:var(--input-glow);}
+
+  .record.deleted{border-color:var(--danger-dim);background:rgba(229,72,77,.04);opacity:.85;}
+  .deleted-badge{background:rgba(229,72,77,.15);color:var(--danger);}
+
+  .filtro-usuario{display:flex;gap:8px;margin-top:12px;}
+  .filtro-btn{
+    flex:1;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);
+    padding:8px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .filtro-btn.active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-dim);}
+
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:var(--panel);border:1px solid var(--border);color:var(--text);
+    padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;
+    box-shadow:0 10px 30px rgba(0,0,0,.4);
+    opacity:0;pointer-events:none;transition:.25s;z-index:50;
+    max-width:88%;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.ok{border-color:var(--ok);}
+  .toast.err{border-color:var(--danger);}
+
+  .footer-note{text-align:center;color:var(--muted);font-size:10.5px;margin-top:18px;line-height:1.5;padding:0 10px;}
+
+  #view-registro{display:none;}
+
+  /* Gear button */
+  .gear-btn{
+    flex:none;background:var(--panel);border:1px solid var(--border);
+    color:var(--muted);width:38px;height:38px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .gear-btn svg{width:19px;height:19px;}
+  .gear-btn:active{transform:scale(.95);}
+
+  /* Sync status bar */
+  .sync-bar{
+    display:flex;align-items:center;gap:7px;
+    font-size:11.5px;color:var(--muted);
+    padding:0 2px 14px;
+  }
+  .sync-bar .dot{width:7px;height:7px;border-radius:50%;background:var(--danger);flex:none;}
+  .sync-bar.connected .dot{background:var(--ok);}
+  .sync-bar.syncing .dot{background:var(--input-glow);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+  /* Config modal */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.6);
+    display:none;align-items:flex-end;justify-content:center;
+    z-index:100;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--panel);border:1px solid var(--border);
+    border-radius:16px 16px 0 0;
+    padding:20px 18px 26px;
+    width:100%;max-width:520px;
+  }
+  .modal h3{margin:0 0 6px;font-size:15px;font-weight:700;}
+  .modal p{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.5;}
+  .modal input[type=text]{margin-bottom:12px;}
+  .modal .modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <svg class="grille-icon" viewBox="0 0 48 48" fill="none">
+      <rect x="4" y="4" width="40" height="40" rx="6" stroke="#34D3C9" stroke-width="2.5"/>
+      <line x1="4" y1="14" x2="44" y2="14" stroke="#34D3C9" stroke-width="2"/>
+      <line x1="4" y1="24" x2="44" y2="24" stroke="#34D3C9" stroke-width="2"/>
+      <line x1="4" y1="34" x2="44" y2="34" stroke="#34D3C9" stroke-width="2"/>
+    </svg>
+    <div style="flex:1;">
+      <h1>Medición y Registro de Caudal</h1>
+      <p>Rejillas · Q = V × A × B / 144</p>
+    </div>
+    <button class="gear-btn" onclick="abrirConfig()" title="Configurar registro compartido">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <div class="sync-bar" id="sync-bar">
+    <span class="dot" id="sync-dot"></span>
+    <span id="sync-text">Sin conectar — solo en este celular</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-calc" onclick="showView('calc')">Calculadora</div>
+    <div class="tab" id="tab-reg" onclick="showView('registro')">Registro</div>
+  </div>
+
+  <!-- ================= VISTA CALCULADORA ================= -->
+  <div id="view-calc">
+
+    <div class="panel">
+      <h2>Datos del equipo</h2>
+      <div class="field">
+        <label>Usuario <button type="button" class="edit-usuario-btn" id="btn-edit-usuario" onclick="desbloquearUsuario()" style="display:none;">✎ cambiar</button></label>
+        <input type="text" id="usuario" placeholder="Nombre de quien registra">
+      </div>
+      <div class="field">
+        <label>Equipo</label>
+        <input type="text" id="equipo" placeholder="Código o nombre del equipo">
+      </div>
+      <div class="row3">
+        <div class="field">
+          <label>Modelo</label>
+          <input type="text" id="modelo" placeholder="Opcional">
+        </div>
+        <div class="field">
+          <label>N° de Serie</label>
+          <input type="text" id="serie" placeholder="Opcional">
+        </div>
+        <div class="field">
+          <label>Potencia eléctrica</label>
+          <input type="text" id="potencia" placeholder="Ej: 5.5kW / 1F / 220V">
+        </div>
+      </div>
+      <div class="field">
+        <label>Descripción</label>
+        <input type="text" id="descripcion" placeholder="Ej: UMA nivel 3 - ambiente 204">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>N° de rejillas</label>
+          <input type="number" id="rejillas" placeholder="0" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>Fecha</label>
+          <input type="date" id="fecha">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Dimensiones de la rejilla</h2>
+      <div class="row2">
+        <div class="field">
+          <label>A (pulg)</label>
+          <div class="unit-input"><input type="number" step="any" id="dimA" placeholder="0" inputmode="decimal" oninput="calcular()"><span>pulg</span></div>
+        </div>
+        <div class="field">
+          <label>B (pulg)</label>
+          <div class="unit-input"><input type="number" step="any" id="dimB" placeholder="0" inputmode="decimal" oninput="calcular()"><span>pulg</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Medidas de velocidad (FPM)</h2>
+      <div class="row3">
+        <div class="field"><label>V1</label><input type="number" step="any" id="v1" placeholder="0" inputmode="decimal" oninput="calcular()"></div>
+        <div class="field"><label>V2</label><input type="number" step="any" id="v2" placeholder="0" inputmode="decimal" oninput="calcular()"></div>
+        <div class="field"><label>V3</label><input type="number" step="any" id="v3" placeholder="0" inputmode="decimal" oninput="calcular()"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>V4</label><input type="number" step="any" id="v4" placeholder="0" inputmode="decimal" oninput="calcular()"></div>
+        <div class="field"><label>V5</label><input type="number" step="any" id="v5" placeholder="0" inputmode="decimal" oninput="calcular()"></div>
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="label">Caudal promedio</div>
+      <div class="value" id="promedio">0<span>CFM</span></div>
+      <div class="caudales-mini">
+        <div class="mini"><div class="n">Q1</div><div class="v" id="q1">0</div></div>
+        <div class="mini"><div class="n">Q2</div><div class="v" id="q2">0</div></div>
+        <div class="mini"><div class="n">Q3</div><div class="v" id="q3">0</div></div>
+        <div class="mini"><div class="n">Q4</div><div class="v" id="q4">0</div></div>
+        <div class="mini"><div class="n">Q5</div><div class="v" id="q5">0</div></div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="registrarMedicion()">Registrar medición</button>
+      <button class="btn btn-secondary" onclick="limpiarDatos()">Limpiar</button>
+    </div>
+
+    <p class="footer-note">Ingresa las 5 medidas de velocidad (FPM) y las dimensiones A y B (pulgadas). El caudal se calcula automáticamente.</p>
+  </div>
+
+  <!-- ================= VISTA REGISTRO ================= -->
+  <div id="view-registro">
+    <div class="panel" style="padding:12px 14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;">Mediciones registradas</h2>
+        <button class="btn-mini" style="flex:none;padding:7px 12px;" onclick="exportarCSV()">Exportar CSV</button>
+      </div>
+      <div class="filtro-usuario">
+        <button class="filtro-btn active" id="btn-filtro-mios" onclick="setFiltroUsuario(true)">Mis registros</button>
+        <button class="filtro-btn" id="btn-filtro-todos" onclick="setFiltroUsuario(false)">Ver todos</button>
+      </div>
+    </div>
+    <div id="lista-pendientes"></div>
+    <div id="lista-registro"></div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modal-config">
+  <div class="modal">
+    <h3>Registro compartido</h3>
+    <p>Pega aquí la URL de la aplicación web de Google Apps Script (ver "Instrucciones_Backend_Compartido.md"). Todos los que usen la app deben pegar la misma URL para ver el mismo registro.</p>
+    <input type="text" id="input-script-url" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarConfig()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarConfig()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const URL_KEY = 'caudal_script_url';
+const CACHE_KEY = 'caudal_registro_cache_v1';
+let registroCache = [];
+
+// ---------- Config del enlace compartido ----------
+function getScriptUrl(){ return localStorage.getItem(URL_KEY) || ''; }
+function abrirConfig(){
+  document.getElementById('input-script-url').value = getScriptUrl();
+  document.getElementById('modal-config').classList.add('show');
+}
+function cerrarConfig(){
+  document.getElementById('modal-config').classList.remove('show');
+}
+function guardarConfig(){
+  const url = document.getElementById('input-script-url').value.trim();
+  if(url && !url.startsWith('https://script.google.com/')){
+    toast('Esa URL no parece de Google Apps Script. Revísala.', 'err');
+    return;
+  }
+  localStorage.setItem(URL_KEY, url);
+  cerrarConfig();
+  actualizarBarraSync();
+  refrescarRegistro();
+  toast(url ? 'Registro compartido conectado.' : 'Se desconectó el registro compartido.', 'ok');
+}
+function actualizarBarraSync(estado){
+  const bar = document.getElementById('sync-bar');
+  const txt = document.getElementById('sync-text');
+  const url = getScriptUrl();
+  bar.classList.remove('connected','syncing');
+  if(!url){
+    txt.textContent = 'Sin conectar — solo en este celular';
+  }else if(estado === 'syncing'){
+    bar.classList.add('syncing');
+    txt.textContent = 'Sincronizando…';
+  }else if(estado === 'error'){
+    txt.textContent = 'No se pudo conectar al registro compartido';
+  }else{
+    bar.classList.add('connected');
+    txt.textContent = 'Conectado al registro compartido';
+  }
+}
+
+// ---------- Comunicación con la hoja compartida ----------
+async function cargarRegistroRemoto(){
+  const url = getScriptUrl();
+  if(!url){ return cargarRegistroLocal(); }
+  actualizarBarraSync('syncing');
+  try{
+    const res = await fetch(url + '?action=list');
+    const data = await res.json();
+    const lista = (data.records || []).map(r => ({
+      numero: Number(r.numero),
+      fecha: r.fecha,
+      usuario: r.usuario,
+      equipo: r.equipo,
+      descripcion: r.descripcion,
+      modelo: r.modelo,
+      serie: r.serie,
+      potencia: r.potencia,
+      rejillas: r.rejillas,
+      v: [r.v1,r.v2,r.v3,r.v4,r.v5].map(Number),
+      a: Number(r.a), b: Number(r.b),
+      caudales: [r.c1,r.c2,r.c3,r.c4,r.c5].map(Number),
+      promedio: Number(r.promedio),
+      estado: r.estado || 'activo',
+      borrado_por: r.borrado_por || '',
+      borrado_fecha: r.borrado_fecha || ''
+    }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(lista));
+    actualizarBarraSync('ok');
+    return lista;
+  }catch(e){
+    actualizarBarraSync('error');
+    toast('Sin conexión al registro compartido. Mostrando la última copia guardada.', 'err');
+    return cargarRegistroLocal();
+  }
+}
+function cargarRegistroLocal(){
+  try{
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+async function refrescarRegistro(){
+  registroCache = await cargarRegistroRemoto();
+  renderRegistro();
+}
+
+// ---------- Navegación ----------
+function showView(v){
+  document.getElementById('view-calc').style.display = v==='calc' ? 'block' : 'none';
+  document.getElementById('view-registro').style.display = v==='registro' ? 'block' : 'none';
+  document.getElementById('tab-calc').classList.toggle('active', v==='calc');
+  document.getElementById('tab-reg').classList.toggle('active', v==='registro');
+  if(v==='registro'){
+    const soloMios = getFiltroMios();
+    document.getElementById('btn-filtro-mios').classList.toggle('active', soloMios);
+    document.getElementById('btn-filtro-todos').classList.toggle('active', !soloMios);
+    refrescarRegistro();
+    sincronizarPendientes(false);
+  }
+}
+
+// ---------- Toast ----------
+let toastTimer;
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 2600);
+}
+
+// ---------- Cálculo (Q = V x A x B / 144) ----------
+function num(id){
+  const v = parseFloat(document.getElementById(id).value);
+  return isNaN(v) ? 0 : v;
+}
+function calcular(){
+  const a = num('dimA'), b = num('dimB');
+  const ids = ['v1','v2','v3','v4','v5'];
+  const llenos = ids.map(id => document.getElementById(id).value.trim() !== '');
+  const vs = ids.map(id => num(id));
+  const caudales = vs.map(v => v*a*b/144);
+
+  caudales.forEach((c,i)=>{
+    document.getElementById('q'+(i+1)).textContent = llenos[i] ? c.toFixed(1) : '—';
+  });
+
+  const caudalesLlenos = caudales.filter((c,i)=> llenos[i]);
+  const promedio = caudalesLlenos.length
+    ? caudalesLlenos.reduce((s,c)=>s+c,0) / caudalesLlenos.length
+    : 0;
+
+  document.getElementById('promedio').innerHTML = promedio.toFixed(1) + '<span>CFM</span>';
+  return {caudales, promedio};
+}
+
+// ---------- Usuario fijo por celular ----------
+const USUARIO_KEY = 'caudal_usuario_fijo';
+
+function initUsuario(){
+  const guardado = localStorage.getItem(USUARIO_KEY);
+  if(guardado){
+    document.getElementById('usuario').value = guardado;
+    bloquearUsuario();
+  }
+  document.getElementById('usuario').addEventListener('blur', guardarUsuarioSiCorresponde);
+}
+function bloquearUsuario(){
+  const input = document.getElementById('usuario');
+  input.readOnly = true;
+  input.classList.add('locked-field');
+  document.getElementById('btn-edit-usuario').style.display = 'inline';
+}
+function desbloquearUsuario(){
+  if(!confirm('¿Cambiar el usuario guardado en este celular? Solo hazlo si ahora lo va a usar otra persona.')) return;
+  const input = document.getElementById('usuario');
+  input.readOnly = false;
+  input.classList.remove('locked-field');
+  input.value = '';
+  input.focus();
+  document.getElementById('btn-edit-usuario').style.display = 'none';
+}
+function guardarUsuarioSiCorresponde(){
+  const input = document.getElementById('usuario');
+  const val = input.value.trim();
+  if(val && !input.readOnly){
+    localStorage.setItem(USUARIO_KEY, val);
+    bloquearUsuario();
+  }
+}
+
+// ---------- Mediciones pendientes (guardadas sin internet) ----------
+const PENDIENTES_KEY = 'caudal_pendientes_v1';
+
+function getPendientes(){
+  try{
+    const raw = localStorage.getItem(PENDIENTES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function setPendientes(lista){
+  localStorage.setItem(PENDIENTES_KEY, JSON.stringify(lista));
+}
+function encolarPendiente(record){
+  const lista = getPendientes();
+  lista.push({ localId: Date.now() + '-' + Math.random().toString(36).slice(2,7), record });
+  setPendientes(lista);
+  renderPendientes();
+}
+function descartarPendiente(localId){
+  if(!confirm('¿Descartar esta medición pendiente? No se enviará al registro compartido.')) return;
+  setPendientes(getPendientes().filter(p => p.localId !== localId));
+  renderPendientes();
+  toast('Medición pendiente descartada.', 'ok');
+}
+
+async function sincronizarPendientes(mostrarToast){
+  const url = getScriptUrl();
+  let pendientes = getPendientes();
+  if(!url || !pendientes.length){ renderPendientes(); return; }
+  if('onLine' in navigator && !navigator.onLine){ renderPendientes(); return; }
+
+  let enviados = 0;
+  for(const p of [...pendientes]){
+    try{
+      await fetch(url, {
+        method:'POST',
+        mode:'no-cors',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({action:'add', record:p.record})
+      });
+      pendientes = pendientes.filter(x => x.localId !== p.localId);
+      setPendientes(pendientes);
+      enviados++;
+    }catch(e){
+      break; // seguimos sin conexión, se reintentará más tarde
+    }
+  }
+
+  if(enviados > 0){
+    await refrescarRegistro();
+    if(mostrarToast) toast(enviados + ' medición(es) pendiente(s) sincronizada(s) con éxito.', 'ok');
+  }
+  renderPendientes();
+}
+
+function renderPendientes(){
+  const cont = document.getElementById('lista-pendientes');
+  if(!cont) return;
+  const pendientes = getPendientes();
+
+  if(!pendientes.length){
+    cont.innerHTML = '';
+    return;
+  }
+
+  cont.innerHTML = `
+    <div class="pendientes-header">
+      <span>⏳ ${pendientes.length} medición(es) pendiente(s) por sincronizar</span>
+      <button class="btn-mini" onclick="sincronizarPendientes(true)">Reintentar ahora</button>
+    </div>
+    ${pendientes.map(p => `
+      <div class="record pending">
+        <div class="record-top">
+          <span class="record-badge pending-badge">PENDIENTE</span>
+          <span class="record-date">${fmtFecha(p.record.fecha)}</span>
+        </div>
+        <p class="record-title">${p.record.equipo ? escapeHtml(p.record.equipo) : 'Sin equipo asignado'}</p>
+        <p class="record-desc">Caudal promedio: ${p.record.promedio.toFixed(1)} CFM — aún no se envió al registro compartido</p>
+        <div class="record-actions">
+          <button class="btn-mini danger" onclick="descartarPendiente('${p.localId}')">Descartar</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+window.addEventListener('online', () => sincronizarPendientes(true));
+
+// ---------- Registrar medición ----------
+async function registrarMedicion(){
+  const fecha = document.getElementById('fecha').value;
+  const usuario = document.getElementById('usuario').value.trim();
+  const {caudales, promedio} = calcular();
+
+  if(!usuario){
+    toast('Ingresa el nombre del usuario antes de registrar.', 'err');
+    return;
+  }
+  guardarUsuarioSiCorresponde();
+  if(!fecha || promedio === 0){
+    toast('Ingresa la fecha y las medidas antes de registrar.', 'err');
+    return;
+  }
+
+  const record = {
+    fecha,
+    usuario,
+    equipo: document.getElementById('equipo').value,
+    descripcion: document.getElementById('descripcion').value,
+    modelo: document.getElementById('modelo').value,
+    serie: document.getElementById('serie').value,
+    potencia: document.getElementById('potencia').value,
+    rejillas: document.getElementById('rejillas').value,
+    v: [num('v1'),num('v2'),num('v3'),num('v4'),num('v5')],
+    a: num('dimA'),
+    b: num('dimB'),
+    caudales,
+    promedio
+  };
+
+  const url = getScriptUrl();
+  if(!url){
+    const lista = cargarRegistroLocal();
+    const numero = lista.length ? Math.max(...lista.map(r=>r.numero)) + 1 : 1;
+    lista.push({numero, ...record});
+    localStorage.setItem(CACHE_KEY, JSON.stringify(lista));
+    toast('Medición registrada como N° ' + numero + ' (solo en este celular).', 'ok');
+    return;
+  }
+
+  actualizarBarraSync('syncing');
+  const countAntes = registroCache.length;
+  try{
+    // mode:'no-cors' porque algunos navegadores bloquean LEER la respuesta del
+    // POST entre dominios aunque el guardado en la hoja sí se haya realizado.
+    // Por eso no confiamos en el contenido de la respuesta: confirmamos
+    // releyendo la lista real (doGet) después de enviar.
+    await fetch(url, {
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'add', record})
+    });
+  }catch(e){
+    // Sin conexión de verdad: no se pudo ni intentar el envío.
+    // Se guarda como pendiente para reintentar solo cuando vuelva internet.
+    encolarPendiente(record);
+    actualizarBarraSync('error');
+    toast('Sin conexión. Se guardó como PENDIENTE y se enviará solo cuando vuelva internet.', 'err');
+    return;
+  }
+
+  await refrescarRegistro();
+  if(registroCache.length > countAntes){
+    const nuevo = registroCache.reduce((max,r)=> r.numero > max.numero ? r : max, registroCache[0]);
+    actualizarBarraSync('ok');
+    toast('Medición registrada como N° ' + nuevo.numero + '.', 'ok');
+  }else{
+    actualizarBarraSync('error');
+    toast('No se confirmó el registro. Revisa la hoja de Sheets o vuelve a intentar.', 'err');
+  }
+}
+
+// ---------- Limpiar datos ----------
+function limpiarDatos(){
+  if(!confirm('¿Borrar los datos ingresados para una nueva medición?')) return;
+  ['equipo','rejillas','fecha','v1','v2','v3','v4','v5','dimA','dimB'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('descripcion').value = '';
+  document.getElementById('modelo').value = '';
+  document.getElementById('serie').value = '';
+  document.getElementById('potencia').value = '';
+  calcular();
+  document.getElementById('equipo').focus();
+}
+
+// ---------- Borrar registro (borrado lógico: queda marcado, no desaparece) ----------
+async function borrarRegistro(numero){
+  const usuarioActual = (localStorage.getItem(USUARIO_KEY) || document.getElementById('usuario').value || '').trim();
+  if(!usuarioActual){
+    toast('Configura tu nombre en "Usuario" (pestaña Calculadora) antes de borrar registros.', 'err');
+    return;
+  }
+  if(!confirm('¿Marcar el registro N° ' + numero + ' como borrado?\n\nQuedará en el historial indicando que ' + usuarioActual + ' lo borró — no desaparece del todo.')) return;
+
+  const url = getScriptUrl();
+  if(!url){
+    let lista = cargarRegistroLocal().map(r => r.numero === numero
+      ? {...r, estado:'borrado', borrado_por: usuarioActual, borrado_fecha: new Date().toISOString()}
+      : r
+    );
+    localStorage.setItem(CACHE_KEY, JSON.stringify(lista));
+    registroCache = lista;
+    renderRegistro();
+    toast('Registro marcado como borrado por ' + usuarioActual + '.', 'ok');
+    return;
+  }
+
+  actualizarBarraSync('syncing');
+  try{
+    await fetch(url, {
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'delete', numero, usuario: usuarioActual})
+    });
+  }catch(e){
+    actualizarBarraSync('error');
+    toast('No se pudo conectar al registro compartido. Revisa tu internet.', 'err');
+    return;
+  }
+
+  await refrescarRegistro();
+  const actualizado = registroCache.find(r => r.numero === numero);
+  if(actualizado && actualizado.estado === 'borrado'){
+    actualizarBarraSync('ok');
+    toast('Registro marcado como borrado por ' + usuarioActual + '.', 'ok');
+  }else{
+    actualizarBarraSync('error');
+    toast('No se confirmó el borrado. Revisa la hoja de Sheets.', 'err');
+  }
+}
+
+// ---------- Exportar CSV ----------
+function exportarCSV(){
+  const lista = registroCache;
+  if(!lista.length){ toast('No hay registros para exportar.', 'err'); return; }
+  const headers = ['N°','Estado','Fecha','Usuario','Equipo','Modelo','N° Serie','Potencia','Descripción','N° de rej.','V1 (FPM)','V2 (FPM)','V3 (FPM)','V4 (FPM)','V5 (FPM)','A (pulg)','B (pulg)','Caudal 1 (CFM)','Caudal 2 (CFM)','Caudal 3 (CFM)','Caudal 4 (CFM)','Caudal 5 (CFM)','Caudal prom. (CFM)','Borrado por','Fecha de borrado'];
+  const rows = lista.map(r => [
+    r.numero, r.estado === 'borrado' ? 'BORRADO' : 'Activo', r.fecha, r.usuario, r.equipo, r.modelo, r.serie, r.potencia, r.descripcion, r.rejillas,
+    ...r.v, r.a, r.b, ...r.caudales.map(c=>c.toFixed(2)), r.promedio.toFixed(2),
+    r.borrado_por || '', r.borrado_fecha || ''
+  ]);
+  let csv = headers.join(';') + '\n' + rows.map(row => row.map(v => `"${(v??'').toString().replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Registro_Caudal_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------- Filtro Mis registros / Ver todos ----------
+const FILTRO_KEY = 'caudal_filtro_mios';
+function getFiltroMios(){
+  const v = localStorage.getItem(FILTRO_KEY);
+  return v === null ? true : v === '1'; // por defecto: solo mis registros
+}
+function setFiltroUsuario(soloMios){
+  localStorage.setItem(FILTRO_KEY, soloMios ? '1' : '0');
+  document.getElementById('btn-filtro-mios').classList.toggle('active', soloMios);
+  document.getElementById('btn-filtro-todos').classList.toggle('active', !soloMios);
+  renderRegistro();
+}
+
+// ---------- Render de la lista de registro ----------
+function fmtFecha(f){
+  if(!f) return '—';
+  const d = new Date(f + 'T00:00:00');
+  if(isNaN(d)) return f;
+  return d.toLocaleDateString('es-PE', {day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function renderRegistro(){
+  const cont = document.getElementById('lista-registro');
+  const usuarioActual = (localStorage.getItem(USUARIO_KEY) || '').trim().toLowerCase();
+  const soloMios = getFiltroMios();
+
+  let todos = [...registroCache].sort((a,b)=> b.numero - a.numero);
+  if(soloMios && usuarioActual){
+    todos = todos.filter(r => (r.usuario || '').trim().toLowerCase() === usuarioActual);
+  }
+  const activos = todos.filter(r => r.estado !== 'borrado');
+  const borrados = todos.filter(r => r.estado === 'borrado');
+
+  if(!todos.length){
+    cont.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="4" width="40" height="40" rx="6" stroke="#8A939C" stroke-width="2"/><line x1="4" y1="16" x2="44" y2="16" stroke="#8A939C" stroke-width="1.5"/><line x1="4" y1="26" x2="44" y2="26" stroke="#8A939C" stroke-width="1.5"/><line x1="4" y1="36" x2="44" y2="36" stroke="#8A939C" stroke-width="1.5"/></svg>
+        ${soloMios && usuarioActual
+          ? `<p>No tienes mediciones registradas todavía.<br>Toca "Ver todos" para ver las del equipo, o ve a "Calculadora" para registrar la primera.</p>`
+          : `<p>Aún no hay mediciones registradas.<br>Ve a "Calculadora" para registrar la primera.</p>`}
+      </div>`;
+    return;
+  }
+
+  const tarjeta = (r, borrado) => `
+    <div class="record ${borrado ? 'deleted' : ''}">
+      <div class="record-top">
+        <span class="record-badge ${borrado ? 'deleted-badge' : ''}">N° ${r.numero}${borrado ? ' · BORRADO' : ''}</span>
+        <span class="record-date">${fmtFecha(r.fecha)}</span>
+      </div>
+      <p class="record-title">${r.equipo ? escapeHtml(r.equipo) : 'Sin equipo asignado'}</p>
+      ${r.usuario ? `<p class="record-desc" style="color:var(--muted);font-size:11.5px;">Registrado por: ${escapeHtml(r.usuario)}</p>` : ''}
+      ${borrado ? `<p class="record-desc" style="color:var(--danger);font-size:11.5px;">Borrado por: ${escapeHtml(r.borrado_por||'—')}${r.borrado_fecha ? ' · '+fmtFecha(r.borrado_fecha.split ? r.borrado_fecha.split('T')[0] : r.borrado_fecha) : ''}</p>` : ''}
+      ${(r.modelo || r.serie || r.potencia) ? `<p class="record-desc">${r.modelo ? 'Modelo: '+escapeHtml(r.modelo) : ''}${r.modelo && r.serie ? ' · ' : ''}${r.serie ? 'Serie: '+escapeHtml(r.serie) : ''}${(r.serie||r.modelo) && r.potencia ? ' · ' : ''}${r.potencia ? escapeHtml(r.potencia) : ''}</p>` : ''}
+      <p class="record-desc">${r.descripcion ? escapeHtml(r.descripcion) : '—'} ${r.rejillas ? '· '+r.rejillas+' rejilla(s)' : ''}</p>
+      <div class="record-grid">
+        <div class="cell"><div class="k">A</div><div class="val">${r.a} pulg</div></div>
+        <div class="cell"><div class="k">B</div><div class="val">${r.b} pulg</div></div>
+        <div class="cell"><div class="k">V prom.</div><div class="val">${(() => { const vs = r.v.filter(v=>v>0); return vs.length ? (vs.reduce((s,v)=>s+v,0)/vs.length).toFixed(0) : '0'; })()} FPM</div></div>
+      </div>
+      <div class="record-avg">
+        <span class="k">Caudal promedio</span>
+        <span class="val">${r.promedio.toFixed(1)} CFM</span>
+      </div>
+      ${!borrado ? `
+      <div class="record-actions">
+        <button class="btn-mini danger" onclick="borrarRegistro(${r.numero})">Borrar registro</button>
+      </div>` : ''}
+    </div>
+  `;
+
+  let html = '';
+
+  if(!activos.length){
+    html += `
+      <div class="empty-state">
+        <p>No hay registros activos. Todos están marcados como borrados.</p>
+      </div>`;
+  }else{
+    html += activos.map(r => tarjeta(r, false)).join('');
+  }
+
+  if(borrados.length){
+    html += `
+      <button class="btn-mini" style="width:100%;margin:14px 0 10px;" onclick="toggleEliminados()">
+        <span id="txt-toggle-eliminados">Ver ${borrados.length} registro(s) borrado(s)</span>
+      </button>
+      <div id="lista-eliminados" style="display:none;">
+        ${borrados.map(r => tarjeta(r, true)).join('')}
+      </div>`;
+  }
+
+  cont.innerHTML = html;
+}
+function toggleEliminados(){
+  const cont = document.getElementById('lista-eliminados');
+  const txt = document.getElementById('txt-toggle-eliminados');
+  const abierto = cont.style.display !== 'none';
+  cont.style.display = abierto ? 'none' : 'block';
+  txt.textContent = abierto
+    ? txt.textContent.replace('Ocultar', 'Ver')
+    : txt.textContent.replace('Ver', 'Ocultar');
+}
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ---------- Init ----------
+document.getElementById('fecha').valueAsDate = new Date();
+initUsuario();
+calcular();
+actualizarBarraSync();
+renderPendientes();
+sincronizarPendientes(false);
+</script>
+</body>
+</html>
